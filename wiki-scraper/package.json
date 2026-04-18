@@ -1,13 +1,21 @@
 {
   "name": "wiki-scraper",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Standalone scraper for climbing wiki route/crag metadata",
+  "main": "src/scraper.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "node --check src/*.js",
+    "lint": "node --check src/*.js test/*.test.js",
+    "test": "node --test",
+    "scrape": "node src/cli.js --pretty",
+    "start": "node src/cli.js"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "climbing",
+    "scraper",
+    "wiki"
+  ],
+  "author": "williamsSoftwareLimited",
   "license": "ISC",
   "type": "commonjs"
 }
