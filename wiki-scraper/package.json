@@ -17,5 +17,8 @@
   ],
   "author": "williamsSoftwareLimited",
   "license": "ISC",
-  "type": "commonjs"
+  "type": "commonjs",
+  "dependencies": {
+    "cheerio": "^1.2.0"
+  }
 }

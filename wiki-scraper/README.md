@@ -4,7 +4,7 @@ Standalone Node.js project that scrapes the Irish climbing wiki and exports norm
 
 ## Usage
 
-From `/home/runner/work/IEClimbing/IEClimbing/wiki-scraper`:
+From the `wiki-scraper` directory:
 
 ```bash
 npm install

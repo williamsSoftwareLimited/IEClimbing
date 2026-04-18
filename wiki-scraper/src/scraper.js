@@ -1,3 +1,5 @@
+const cheerio = require("cheerio");
+
 const DEFAULT_BASE_URL = "https://wiki.climbing.ie";
 const DEFAULT_START_PATHS = ["/wiki/Main_Page"];
 const DEFAULT_MAX_PAGES = 100;
@@ -5,19 +7,6 @@ const DEFAULT_DELAY_MS = 250;
 
 function normalizeWhitespace(value) {
   return (value || "").replace(/\s+/g, " ").trim();
-}
-
-function stripHtml(html) {
-  return normalizeWhitespace(
-    (html || "")
-      .replace(/<script[\s\S]*?<\/script>/gi, " ")
-      .replace(/<style[\s\S]*?<\/style>/gi, " ")
-      .replace(/<[^>]+>/g, " ")
-      .replace(/&nbsp;/gi, " ")
-      .replace(/&amp;/gi, "&")
-      .replace(/&quot;/gi, "\"")
-      .replace(/&#39;/gi, "'")
-  );
 }
 
 function toSlug(value) {
@@ -50,27 +39,23 @@ function wikiPathFromUrl(url) {
   }
 }
 
-function extractTitle(html, fallbackPath) {
-  const headingMatch = html.match(/<h1[^>]*id=["']firstHeading["'][^>]*>([\s\S]*?)<\/h1>/i);
-  if (headingMatch) {
-    const heading = stripHtml(headingMatch[1]);
-    if (heading) {
-      return heading;
-    }
+function extractTitle($, fallbackPath) {
+  const heading = normalizeWhitespace($("#firstHeading").first().text());
+  if (heading) {
+    return heading;
   }
 
-  const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-  const title = stripHtml(titleMatch ? titleMatch[1] : "");
+  const title = normalizeWhitespace($("title").first().text());
   if (title) {
     return title.split(" - ")[0];
   }
+
   return fallbackPath.replace("/wiki/", "").replace(/_/g, " ");
 }
 
-function extractDescription(html) {
-  const paragraphs = [...html.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/gi)];
-  for (const paragraph of paragraphs) {
-    const text = stripHtml(paragraph[1]);
+function extractDescription($) {
+  for (const paragraph of $("p").toArray()) {
+    const text = normalizeWhitespace($(paragraph).text());
     if (text.length > 40) {
       return text;
     }
@@ -78,29 +63,15 @@ function extractDescription(html) {
   return "";
 }
 
-function extractInfobox(html) {
-  const tableMatch = html.match(
-    /<table[^>]*class=["'][^"']*infobox[^"']*["'][^>]*>([\s\S]*?)<\/table>/i
-  );
-  if (!tableMatch) {
-    return {};
-  }
-
+function extractInfobox($) {
   const infobox = {};
-  const rows = [...tableMatch[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)];
-  for (const row of rows) {
-    const keyMatch = row[1].match(/<th[^>]*>([\s\S]*?)<\/th>/i);
-    const valueMatch = row[1].match(/<td[^>]*>([\s\S]*?)<\/td>/i);
-    if (!keyMatch || !valueMatch) {
-      continue;
-    }
-    const key = normalizeWhitespace(stripHtml(keyMatch[1])).toLowerCase();
-    const value = normalizeWhitespace(stripHtml(valueMatch[1]));
+  $("table.infobox tr").each((_index, row) => {
+    const key = normalizeWhitespace($(row).find("th").first().text()).toLowerCase();
+    const value = normalizeWhitespace($(row).find("td").first().text());
     if (key && value) {
       infobox[key] = value;
     }
-  }
-
+  });
   return infobox;
 }
 
@@ -129,8 +100,9 @@ function readField(infobox, keys) {
 }
 
 function normalizeEntity({ pageUrl, pagePath, html }) {
-  const title = extractTitle(html, pagePath);
-  const infobox = extractInfobox(html);
+  const $ = cheerio.load(html);
+  const title = extractTitle($, pagePath);
+  const infobox = extractInfobox($);
   const type = inferType(title, infobox);
 
   return {
@@ -152,24 +124,25 @@ function normalizeEntity({ pageUrl, pagePath, html }) {
       vScale: readField(infobox, ["v grade", "v-scale", "v scale"]),
     },
     metadata: infobox,
-    description: extractDescription(html),
+    description: extractDescription($),
     scrapedAt: new Date().toISOString(),
   };
 }
 
 function extractWikiLinks(html, baseUrl) {
+  const $ = cheerio.load(html);
   const links = new Set();
-  const matches = [...html.matchAll(/<a[^>]+href=["']([^"']+)["'][^>]*>/gi)];
-  for (const match of matches) {
-    const fullUrl = absoluteUrl(baseUrl, match[1]);
+  $("a[href]").each((_index, link) => {
+    const href = $(link).attr("href");
+    const fullUrl = absoluteUrl(baseUrl, href);
     if (!fullUrl) {
-      continue;
+      return;
     }
     const path = wikiPathFromUrl(fullUrl);
     if (path) {
       links.add(path);
     }
-  }
+  });
   return [...links];
 }
 
@@ -201,20 +174,22 @@ async function crawlWiki({
   delayMs = DEFAULT_DELAY_MS,
   userAgent = "IEClimbingWikiScraper/1.0 (+https://github.com/williamsSoftwareLimited/IEClimbing)",
 } = {}) {
-  const normalizedBaseUrl = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+  const formattedBaseUrl = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
   const queue = [...startPaths];
+  const queued = new Set(queue);
   const visited = new Set();
   const items = [];
   const failures = [];
 
   while (queue.length > 0 && visited.size < maxPages) {
     const pagePath = queue.shift();
+    queued.delete(pagePath);
     if (!pagePath || visited.has(pagePath)) {
       continue;
     }
 
     visited.add(pagePath);
-    const pageUrl = absoluteUrl(normalizedBaseUrl, pagePath);
+    const pageUrl = absoluteUrl(formattedBaseUrl, pagePath);
     if (!pageUrl) {
       failures.push({ pagePath, reason: "Invalid URL" });
       continue;
@@ -224,10 +199,15 @@ async function crawlWiki({
       const html = await fetchPage(pageUrl, userAgent);
       items.push(normalizeEntity({ pageUrl, pagePath, html }));
 
-      const discoveredLinks = extractWikiLinks(html, normalizedBaseUrl);
+      const discoveredLinks = extractWikiLinks(html, formattedBaseUrl);
       for (const discoveredPath of discoveredLinks) {
-        if (!visited.has(discoveredPath) && !queue.includes(discoveredPath) && visited.size + queue.length < maxPages * 2) {
+        if (
+          !visited.has(discoveredPath) &&
+          !queued.has(discoveredPath) &&
+          visited.size + queue.length < maxPages * 2
+        ) {
           queue.push(discoveredPath);
+          queued.add(discoveredPath);
         }
       }
     } catch (error) {
@@ -238,7 +218,7 @@ async function crawlWiki({
   }
 
   return {
-    source: normalizedBaseUrl.replace(/\/$/, ""),
+    source: formattedBaseUrl.replace(/\/$/, ""),
     generatedAt: new Date().toISOString(),
     pageCount: items.length,
     visitedCount: visited.size,

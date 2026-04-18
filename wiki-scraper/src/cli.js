@@ -18,13 +18,13 @@ function parseArgs(argv) {
     pretty: false,
   };
 
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index];
-    const next = argv[index + 1];
+  for (let argIndex = 0; argIndex < argv.length; argIndex += 1) {
+    const arg = argv[argIndex];
+    const next = argv[argIndex + 1];
 
     if (arg === "--base-url" && next) {
       config.baseUrl = next;
-      index += 1;
+      argIndex += 1;
       continue;
     }
     if (arg === "--start-path" && next) {
@@ -32,22 +32,22 @@ function parseArgs(argv) {
         .split(",")
         .map((item) => item.trim())
         .filter(Boolean);
-      index += 1;
+      argIndex += 1;
       continue;
     }
     if (arg === "--max-pages" && next) {
       config.maxPages = Number(next);
-      index += 1;
+      argIndex += 1;
       continue;
     }
     if (arg === "--delay-ms" && next) {
       config.delayMs = Number(next);
-      index += 1;
+      argIndex += 1;
       continue;
     }
     if (arg === "--out" && next) {
       config.out = path.resolve(process.cwd(), next);
-      index += 1;
+      argIndex += 1;
       continue;
     }
     if (arg === "--pretty") {
