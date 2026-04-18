@@ -42,4 +42,5 @@ test("extractWikiLinks keeps internal wiki links and drops special pages", () =>
 
   const links = extractWikiLinks(html, "https://wiki.climbing.ie");
   assert.deepEqual(links.sort(), ["/wiki/Fairy_Castle", "/wiki/Main_Page"]);
+  assert.equal(links.includes("/wiki/Category:Routes"), false);
 });
